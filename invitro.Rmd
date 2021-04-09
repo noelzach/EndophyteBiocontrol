@@ -1,0 +1,129 @@
+---
+title: "Endophyte_invitro_Comp"
+author: "Zachary Noel"
+date: "9/8/2020"
+output: html_document
+---
+
+```{r LIBRARIES}
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(emmeans)
+library(cowplot)
+library(ggpubr)
+library(ggplot2)
+library(multcomp)
+```
+## In-vitro competition
+```{r READ MYCOTOXIN DATA}
+# read in data
+invitro.comp <- read.csv("Data/EndophyteInVitro.csv", na.strings = "na")
+str(invitro.comp)
+```
+
+Here we are going to analyse in-vitro fungal fungal competition data where the data are the percent of the petri dish the fungi occupied. 
+
+The experiment was performed on 6 strains of Fusarium graminearum including PH-1, and three endophytes from wheat that have shown the ability to restrict growth of F.g. under greenhouse coditions. 
+
+### Competition
+Linear model for the competition experiment - the model we are using is one where I am using the isolate, endophyte, and dpi as a fixed effect and the bio-rep (replication of the experiment over time) as a random effect. 
+```{r LINEAR MODEL}
+invitro.comp.minus.zero <- invitro.comp %>%
+  subset(dpi != 0) 
+lm.comp <- lmer(colony_area_Fg ~ isolate * endophyte_strain * as.factor(dpi) + (1|trial), data = invitro.comp.minus.zero)
+car::Anova(lm.comp)
+
+plot(lm.comp) 
+```
+The model looks a little non-homogeneous, but I think that is from having little variation in day 0 measurements compared to the rest of the days.Lets go with it for now, and we can come back to this later.There is a three way interaction, indicating that the percent of the area occupied by F.g. was dependent on the isolate of F.g., the endophyte present, and the days of growth. 
+
+```{r LSMEANS}
+lsmeans.comp <- emmeans(lm.comp, ~endophyte_strain|dpi) # estimate lsmeans of variety within siteXyear
+results_lsmeans_comp <- cld(lsmeans.comp, alpha = 0.05, adjust = "sidak", reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+results_lsmeans_comp
+```
+
+We could also test this with a non-parametric Kruskal-Wallis test. 
+```{r NON-PARAMETRIC}
+kruskal.test(DON ~ Treatment, data = DON_sub)
+
+pwwt <- pairwise.wilcox.test(DON_sub$DON, DON_sub$Treatment,
+                 p.adjust.method = "bonferroni")
+
+library(multcompView)
+pwwt$p.value
+library(reshape)
+(a <- melt(test$p.value))
+a.cc  <-  na.omit(a)
+a.pvals  <-  a.cc[, 3]
+names(a.pvals)  <-  paste(a.cc[, 1], a.cc[, 2], sep="-")
+a.pvals
+multcompLetters(a.pvals)
+
+melt(pwwt$p.value)
+```
+Seems like similar trends are shown to the parametric linear model. 
+
+All endophytes alone were significantly different than the glycerol + Fg treatment, but not the combination of endophytes.
+
+### Graph
+```{r}
+ggplot(invitro.comp, aes(x = dpi, y = percent_occupied_Fg,  group = endophyte_strain, shape = endophyte_strain)) +
+  stat_summary(fun.y=mean,geom="point", size = 2) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  stat_summary(fun.y=mean,geom="line", width = 0.75) +
+  #geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("Percent area of petri dish \n occupied by F.g") +
+  xlab("DPI") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+    legend.position = c(.05, .95),
+    legend.justification = c("left", "top"),
+    legend.box.just = "left") 
+```
+
+```{r}
+means <- invitro.comp %>% 
+  group_by(endophyte_strain, as.factor(dpi)) %>% 
+  nest() %>%
+  mutate(mean.percent.occupied = purrr::map(data,~mean(.$percent_occupied_Fg))) %>%
+  mutate(SE.percent.occupied = purrr::map(data,~sd(.$percent_occupied_Fg)/sqrt(length(.$percent_occupied_Fg)))) %>%
+  unnest(c(mean.percent.occupied, SE.percent.occupied))
+
+means
+```
+
+
+## Volitile
+```{r READ MYCOTOXIN DATA}
+# read in data
+volitile.comp <- read.csv("Data/Volitile.csv", na.strings = "na")
+str(volitile.comp)
+```
+
+```{r LINEAR MODEL}
+lm.comp.volitile <- lmer(colony_area ~ fg * endophyte + (1|trial), data = volitile.comp)
+car::Anova(lm.comp.volitile)
+
+plot(lm.comp.volitile) 
+```
+
+```{r LSMEANS}
+lsmeans.volitile <- emmeans(lm.comp.volitile, ~endophyte|fg) # estimate lsmeans of variety within siteXyear
+results_lsmeans_volitile <- emmeans::cld(lsmeans.volitile, alpha = 0.05, adjust = "tuk", reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+results_lsmeans_volitile
+```
+
+### Graph
+```{r}
+volitile.graph <- ggplot(volitile.comp, aes(x = endophyte, y = colony_area)) +
+  stat_summary(fun.y=mean,geom="bar", color = "black", width = 0.75) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("Fg colony area") +
+  xlab("") +
+  theme_bw() +
+  stat_compare_means(method = "anova")
+```

@@ -1,0 +1,321 @@
+---
+title: "DON_data"
+author: "Zachary Noel"
+date: "12/12/2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r LIBRARIES}
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(emmeans)
+library(cowplot)
+library(ggpubr)
+library(ggplot2)
+library(multcomp)
+```
+## MYCOTOXIN DATA
+```{r READ MYCOTOXIN DATA}
+# DON data
+DON <- read.csv("/Users/zacharynoel/odrive/WorkGoogleDrive/Post-doc/Wheat\ Biocontrol\ Project/R/WheatBiocontrol/Data/MycotoxinData.csv", na.strings = "na")
+str(DON)
+
+levels(as.factor(DON$Treatment))
+```
+
+Here we are going to analyse mycotoxin data that has been collected from wheat heads grown in the greenhouse inoculated with Fusarium graminearum or endophytes to protect against Fusarium graminearum. 
+
+The experiment was performed by inoculating the heads with Fg and glycerol (positive control), Fg + endophytes, or glycerol (Negative control).
+
+Therefore I will subset these data to only include those treatments. We will also take out the treatment with Fg + 37 + 40 since that treatment was only performed twice not three times like the rest of the treatmnts.
+```{r}
+DON_sub <- DON %>%
+  subset(Treatment %in% c("NTC", "Fg", "Fg + 37", "Fg + 40", "Fg + 70")) 
+```
+
+### DON
+Linear model DON - the model we are using is one where I am using the treatment as a fixed effect and the bio-rep (replication of the experiment over time) as a random effect. 
+```{r LINEAR MODEL}
+lm.DON <- lmer(DON ~ Treatment*Cultivar + (1|BioRep), data = DON_sub)
+car::Anova(lm.DON)
+
+plot(lm.DON) 
+```
+The model looks a little non-homogeneous but I think that is from the NTC and Glycerol control not having any DON and no variation. And the FG inoculated having alot of variation. 
+
+```{r LSMEANS}
+lsmeans.DON <- emmeans(lm.DON, ~Treatment) # estimate lsmeans of variety within siteXyear
+Results_lsmeansEC <- emmeans::cld(lsmeans.DON, alpha = 0.05, adjust = "tuk", reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+Results_lsmeansEC
+```
+
+We could also test this with a non-parametric Kruskal-Wallis test. 
+```{r NON-PARAMETRIC}
+kruskal.test(DON ~ Treatment, data = DON_sub)
+
+pwwt <- pairwise.wilcox.test(DON_sub$DON, DON_sub$Treatment,
+                 p.adjust.method = "bonferroni")
+
+library(multcompView)
+pwwt$p.value
+library(reshape)
+(a <- melt(pwwt$p.value))
+a.cc  <-  na.omit(a)
+a.pvals  <-  a.cc[, 3]
+names(a.pvals)  <-  paste(a.cc[, 1], a.cc[, 2], sep="-")
+a.pvals
+multcompLetters(a.pvals)
+
+melt(pwwt$p.value)
+
+DON_sub %>% 
+  group_by(Treatment) %>%
+  summarize(avg = mean(DON, na.rm = T), 
+            n = n(), 
+            sd = sd(DON, na.rm = T), 
+            se = sd/sqrt(n))
+```
+Seems like similar trends are shown to the parametric linear model. 
+
+All endophytes alone were significantly different than the glycerol + Fg treatment, but not the combination of endophytes.
+
+### 15A-DON
+
+Linear model DON - the model we are using is one where I am using the treatment as a fixed effect and the bio-rep (replication of the experiment over time) as a random effect. 
+```{r LINEAR MODEL}
+lm.15ADON <- lmer(X15ADON ~ Treatment*Cultivar + (1|BioRep), data = DON_sub)
+car::Anova(lm.15ADON)
+
+plot(lm.15ADON) #looks a little non-homogeneous but I think that is from the NTC not having any DON and no variation 
+```
+The model also looks non-homogenous due to some larger variation between some treatments
+
+```{r LSMEANS}
+lsmeans.15ADON <- emmeans(lm.15ADON, ~Treatment) # estimate lsmeans of variety within siteXyear
+Results_lsmeans15Adon <- emmeans::cld(lsmeans.15ADON, alpha = 0.05, adjust = "tuk", reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+Results_lsmeans15Adon
+```
+
+We will also test this with a non-parametric Kruskal-Wallis test. 
+```{r NON-PARAMETRIC}
+kruskal.test(X15ADON ~ Treatment, data = DON_sub)
+
+pwwt <- pairwise.wilcox.test(DON_sub$X15ADON, DON_sub$Treatment,
+                 p.adjust.method = "bonferroni")
+
+library(multcompView)
+pwwt$p.value
+library(reshape)
+(a <- melt(pwwt$p.value))
+a.cc  <-  na.omit(a)
+a.pvals  <-  a.cc[, 3]
+names(a.pvals)  <-  paste(a.cc[, 1], a.cc[, 2], sep="-")
+a.pvals
+multcompLetters(a.pvals)
+
+melt(pwwt$p.value)
+
+DON_sub %>% 
+  group_by(Treatment) %>%
+  summarize(avg = mean(X15ADON, na.rm = T), 
+            n = n(), 
+            sd = sd(X15ADON, na.rm = T), 
+            se = sd/sqrt(n))
+```
+Seems like similar trends are shown to the parametric linear model. 
+The endophytes reduced 15A DON compared to the Fg inoculated, but not quite to the level of the negative control
+
+### Seed Mass
+
+Linear model Seed Mass - the model we are using is one where I am using the treatment as a fixed effect and the bio-rep (replication of the experiment over time) as a random effect. 
+```{r LINEAR MODEL}
+lm.seedmass <- lmer(MassperSeed_mg ~ Treatment*Cultivar + (1|BioRep), data = DON_sub)
+car::Anova(lm.seedmass, type = 3) # type 3 sum squares due to unequal sample sizes. 
+
+plot(lm.seedmass) #looks much better than the DON data.
+```
+The model also looks non-homogenous due to some larger variation between some treatments
+
+```{r LSMEANS}
+lsmeans.seedmass <- emmeans(lm.seedmass, ~Treatment) # estimate lsmeans
+Results_lsmeansseedmass <- multcomp::cld(lsmeans.seedmass, alpha = 0.05, adjust = "tuk", reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+Results_lsmeansseedmass
+```
+Looks like there was not as strong of a violation of the non-homogenous variance across treatments so this can be analysed using a parametric test. 
+
+```{r MEANS +/- SE}
+DON_sub %>% 
+  group_by(Treatment) %>%
+  summarize(avg = mean(MassperSeed_mg), n = n(), 
+              sd = sd(MassperSeed_mg), se = sd/sqrt(n))
+```
+
+### Plot
+
+Lets make a plot
+```{r PLOTS}
+DON_sub$Treatment <- factor(DON_sub$Treatment,levels = c("NTC", "Fg", "Fg + 37", "Fg + 40", "Fg + 70"))
+
+DON_total <- ggplot(DON_sub, aes(x = Treatment, y = DON)) +
+  stat_summary(fun.y=mean,geom="bar", color = "black", width = 0.75) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("DON (ppm)") +
+  stat_compare_means(label = "p.signif", method = "t.test",
+                     ref.group = "Fg") +
+  xlab("") +
+theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(labels=c("Control", "Fg", "Fg + A. destruens #37", "Fg + F. commune #40", "Fg + F. oxysporum #70")) +
+  facet_wrap(~Cultivar)
+DON3A <- ggplot(DON_sub, aes(x = Treatment, y = X3ADON)) +
+  stat_summary(fun.y=mean,geom="bar", color = "black", width = 0.75) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("3-ADON (ppm)") +
+  xlab("") +
+theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(labels=c("NTC", "Fg", "Fg + A. destruens #37", "Fg + F. commune #40", "Fg + F. oxysporum #70")) 
+DON15A <- ggplot(DON_sub, aes(x = Treatment, y = X15ADON)) +
+  stat_summary(fun.y=mean,geom="bar", color = "black", width = 0.75) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("15-ADON (ppm)") +
+  xlab("") +
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(labels=c("Control", "Fg", "Fg + A. destruens #37", "Fg + F. commune #40", "Fg + F. oxysporum #70")) 
+
+plot_grid(DON_total, DON15A, labels = "AUTO", ncol = 2)
+```
+
+## ROOT & SHOOT DRY WEIGHTS 
+### Seed Mass
+
+```{r READ DRY MASS DATA}
+# Root and Shoot mass
+root_shoot_mass <- read.csv("Data/Root_ShootDryWeight.csv", na.strings = "na")
+str(root_shoot_mass)
+
+# convert the dry mass data to mg 
+root_shoot_mass$root_dry_weight_mg <- root_shoot_mass$root_dry_weight*1000
+root_shoot_mass$shoot_dry_weight_mg <- root_shoot_mass$shoot_dry_weight*1000
+
+# calculate plant mass
+root_shoot_mass$total <- root_shoot_mass$root_dry_weight_mg + root_shoot_mass$shoot_dry_weight_mg
+
+root_shoot_mass_sub <- root_shoot_mass %>%
+  subset(Treatment %in% c("Fg", "Fg + 37", "Fg + 40", "Fg + 70"))
+```
+
+### ROOT MASS 
+Linear model Root Mass - the model we are using is one where I am using the treatment as a fixed effect and the bio-rep (replication of the experiment over time) as a random effect. 
+```{r LINEAR MODEL}
+lm.rootmass <- lmer(root_dry_weight_mg ~ Treatment + (1|Biorep), data = root_shoot_mass_sub)
+summary(lm.rootmass)
+car::Anova(lm.rootmass, type = 3) # type 3 sum squares due to unequal sample sizes. 
+
+plot(lm.rootmass) #looks much better than the DON data.
+```
+The model looks ok...not great but ok to continue I think
+
+```{r LSMEANS}
+
+lsmeans.rootmass <- emmeans(lm.rootmass, ~Treatment) # estimate lsmeans
+Results_lsmeansrootmass <- multcomp::cld(lsmeans.rootmass, alpha = 0.05, adjust = "sidak", reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+Results_lsmeansrootmass
+```
+
+### SHOOT MASS
+
+Linear model Shoot Mass - the model we are using is one where I am using the treatment as a fixed effect and the bio-rep (replication of the experiment over time) as a random effect. 
+```{r LINEAR MODEL}
+lm.shootmass <- lm(shoot_dry_weight_mg ~ Treatment + Biorep, data = root_shoot_mass_sub)
+car::Anova(lm.shootmass, type = 3) # type 3 sum squares due to unequal sample sizes. 
+
+summary(lm.shootmass)
+
+plot(lm.shootmass) #looks much better than the DON data.
+```
+The model looks ok
+
+```{r LSMEANS}
+lsmeans.shootmass <- emmeans(lm.shootmass, ~Treatment|Biorep) # estimate lsmeans
+Results_lsmeansshootmass <- emmeans::cld(lsmeans.shootmass, alpha = 0.05, adjust = "tuk", reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+Results_lsmeansshootmass
+```
+
+Linear model Total Plant Mass - the model we are using is one where I am using the treatment as a fixed effect and the bio-rep (replication of the experiment over time) as a random effect. 
+```{r LINEAR MODEL}
+lm.total <- lm(total ~ Treatment + Biorep, data = root_shoot_mass_sub)
+car::Anova(lm.total, type = 3) # type 3 sum squares due to unequal sample sizes. 
+
+plot(lm.shootmass) #looks much better than the DON data.
+```
+
+### Plot
+```{r PLOTS}
+root_shoot_mass$Treatment <- factor(root_shoot_mass$Treatment,levels = c("NTC", "Fg", "Fg + 37", "Fg + 40", "Fg + 70"))
+
+RootMass <- ggplot(root_shoot_mass, aes(x = Treatment, y = root_dry_weight_mg)) +
+  stat_summary(fun.y=mean,geom="bar", color = "black", width = 0.75) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("Root Mass (mg)") +
+  xlab("") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ShootMass <- ggplot(root_shoot_mass, aes(x = Treatment, y = shoot_dry_weight_mg)) +
+  stat_summary(fun.y=mean,geom="bar", color = "black", width = 0.75) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("Shoot Mass (mg)") +
+  xlab("") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+SeedMass <- ggplot(DON_sub, aes(x = Treatment, y = MassperSeed_mg)) +
+  stat_summary(fun.y=mean,geom="bar", color = "black", width = 0.75) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.5) +
+  geom_jitter(pch = 21, alpha = 0.6, width = 0.1) + 
+  ylab("Seed Mass (mg)") +
+  xlab("") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+  facet_wrap(~Cultivar) +
+    stat_compare_means(label = "p.signif", method = "t.test",
+                     ref.group = "Fg") 
+
+ggplot(DON_sub, aes(x = MassperSeed_mg, y = log(DON), color = Treatment)) +
+  geom_point() + 
+  ylab("log DON") +
+  xlab("Seed Mass (mg)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+  facet_wrap(~Cultivar) +
+    stat_compare_means(label = "p.signif", method = "t.test",
+                     ref.group = "Fg") 
+
+plot_grid(RootMass, ShootMass, SeedMass, labels = "AUTO", ncol = 1)
+```
+
+Put the cell means into a table form
+```{r}
+means <- root_shoot_mass %>% 
+  group_by(Treatment) %>% 
+  nest() %>%
+  mutate(mean.rootmass = purrr::map(data,~mean(.$root_dry_weight_mg))) %>%
+  mutate(SE.rootmass = purrr::map(data,~sd(.$root_dry_weight_mg)/sqrt(length(.$root_dry_weight_mg)))) %>%
+  mutate(mean.shootmass = purrr::map(data,~mean(.$shoot_dry_weight_mg))) %>%
+  mutate(SE.shootmass = purrr::map(data,~sd(.$shoot_dry_weight_mg)/sqrt(length(.$shoot_dry_weight_mg)))) %>%
+  unnest(c(mean.rootmass, SE.rootmass, mean.shootmass, SE.shootmass))
+
+means
+```
+
+
+
+
